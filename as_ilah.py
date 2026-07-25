@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, request
 
-SHOPE_NAME=os.environ.get("SHOPE_NAME")
+SHOP_NAME=os.environ.get("SHOP_NAME")
 TOKEN = os.environ.get("BOT_TOKEN")
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
