@@ -23,7 +23,7 @@ def webhook():
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
         if text == "/start":
-            send_message(chat_id, f"مرحبا بك في {SHOP_NAME}\nأاستعد للاسئلة")
+            send_message(chat_id, f"مرحبا بك في بوت {SHOP_NAME}\nهل انت مستعد")
     return "ok", 200
 
 @app.get("/")
