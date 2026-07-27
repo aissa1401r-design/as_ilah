@@ -2,39 +2,63 @@ import os
 import requests
 from flask import Flask, request
 
-SHOP_NAME = os.environ.get("SHOP_NAME", "متجري")
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("BOT_TOKEN not found")
-
-API_URL = f"https://api.telegram.org/bot{TOKEN}"
 app = Flask(__name__)
 
-def send_message(chat_id, text):
+TOKEN = os.getenv("BOT_TOKEN")
+API_URL = f"https://api.telegram.org/bot{TOKEN}"
+SHOP_NAME = "بوت الأسئلة الدينية"
+
+# 1. دالة الارسال مطورة
+def send_message(chat_id, text, keyboard=None):
+    url = f"{API_URL}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    if keyboard:
+        payload["reply_markup"] = keyboard
+    
     try:
-        requests.post(f"{API_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
+        r = requests.post(url, json=payload, timeout=5)
+        print("Telegram response:", r.status_code, r.text)
     except Exception as e:
-        print(f"Error sending message: {e}")
+        print("Error:", e)
+
+# 2. الازرار الرئيسية
+main_keyboard = {
+    "keyboard": [
+        ["📖 ابدأ الاختبار"],
+        ["🏆 النتيجة"], 
+        ["❓ مساعدة"]
+    ],
+    "resize_keyboard": True,  # تصغر الازرار
+    "one_time_keyboard": False # تبقى دايما
+}
 
 @app.post(f"/{TOKEN}")
 def webhook():
     data = request.get_json(silent=True) or {}
+    print("Data:", data)
+
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
+
         if text == "/start":
-            send_message(chat_id, f"مرحبا بك في بوت {SHOP_NAME}\nهل انت مستعد")
+            msg = f"مرحبا بك في {SHOP_NAME}\nاختار من القائمة تحت 👇"
+            send_message(chat_id, msg, main_keyboard)
+
+        elif text == "📖 ابدأ الاختبار":
+            send_message(chat_id, "بسم الله نبداو\nالسؤال الاول: كم عدد أركان الاسلام؟", main_keyboard)
+        
+        elif text == "🏆 النتيجة":
+            send_message(chat_id, "مازال ما جاوبت على حتى سؤال 😅", main_keyboard)
+
+        elif text == "❓ مساعدة":
+            send_message(chat_id, "هذا بوت أسئلة دينية\nاضغط ابدأ الاختبار و جاوب على الأسئلة", main_keyboard)
+        
+        else:
+            send_message(chat_id, "اختار من الازرار تحت 👇", main_keyboard)
+
     return "ok", 200
 
 @app.get("/")
-def home():
-    return "OK", 200
-
-@app.get("/setwebhook")
-def set_webhook():
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
-    if render_url and not render_url.startswith("https://"):
-        render_url = "https://" + render_url
-    url = f"{API_URL}/setWebhook?url={render_url}/{TOKEN}"
-    r = requests.get(url)
-    return r.text, 200
+def health_check():
+    return "Bot is running", 200
