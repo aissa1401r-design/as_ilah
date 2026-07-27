@@ -8,52 +8,76 @@ TOKEN = os.getenv("BOT_TOKEN")
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
 SHOP_NAME = "بوت الأسئلة الدينية"
 
-# 1. دالة الارسال مطورة
+# 1. هذا وين نخزنو النقاط. يتمسحو كي يعاود يطلع السيرفر
+user_scores = {} # مثال: {123456: 3}
+user_state = {} # باش نتفكرو في اي سؤال راهو
+
+# 2. الاسئلة
+questions = [
+    {"q": "كم عدد أركان الاسلام؟", "a": "5"},
+    {"q": "ما هي اول سورة في القرآن؟", "a": "الفاتحة"},
+    {"q": "كم عدد الصلوات في اليوم؟", "a": "5"}
+]
+
 def send_message(chat_id, text, keyboard=None):
     url = f"{API_URL}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if keyboard:
         payload["reply_markup"] = keyboard
-    
-    try:
-        r = requests.post(url, json=payload, timeout=5)
-        print("Telegram response:", r.status_code, r.text)
-    except Exception as e:
-        print("Error:", e)
+    requests.post(url, json=payload, timeout=5)
 
-# 2. الازرار الرئيسية
 main_keyboard = {
-    "keyboard": [
-        ["📖 ابدأ الاختبار"],
-        ["🏆 النتيجة"], 
-        ["❓ مساعدة"]
-    ],
-    "resize_keyboard": True,  # تصغر الازرار
-    "one_time_keyboard": False # تبقى دايما
+    "keyboard": [["📖 ابدأ الاختبار"], ["🏆 النتيجة"], ["❓ مساعدة"]],
+    "resize_keyboard": True
 }
 
 @app.post(f"/{TOKEN}")
 def webhook():
     data = request.get_json(silent=True) or {}
-    print("Data:", data)
+    if "message" not in data: return "ok", 200
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
+    chat_id = data["message"]["chat"]["id"]
+    text = data["message"].get("text", "")
 
-        if text == "/start":
-            msg = f"مرحبا بك في {SHOP_NAME}\nاختار من القائمة تحت 👇"
-            send_message(chat_id, msg, main_keyboard)
+    # نجيبو النقاط تاعه ولا نحطو 0
+    if chat_id not in user_scores:
+        user_scores[chat_id] = 0
+        user_state[chat_id] = None
 
-        elif text == "📖 ابدأ الاختبار":
-            send_message(chat_id, "بسم الله نبداو\nالسؤال الاول: كم عدد أركان الاسلام؟", main_keyboard)
-        
-        elif text == "🏆 النتيجة":
-            send_message(chat_id, "مازال ما جاوبت على حتى سؤال 😅", main_keyboard)
+    if text == "/start":
+        msg = f"مرحبا بك في {SHOP_NAME}\nالنقاط تاعك: {user_scores[chat_id]}"
+        send_message(chat_id, msg, main_keyboard)
 
-        elif text == "❓ مساعدة":
-            send_message(chat_id, "هذا بوت أسئلة دينية\nاضغط ابدأ الاختبار و جاوب على الأسئلة", main_keyboard)
-        
+    elif text == "📖 ابدأ الاختبار":
+        user_state[chat_id] = 0 # نبداو من السؤال 0
+        q = questions[0]["q"]
+        send_message(chat_id, f"السؤال 1: {q}", main_keyboard)
+
+    elif text == "🏆 النتيجة":
+        score = user_scores[chat_id]
+        send_message(chat_id, f"نقاطك الحالية: {score} من {len(questions)}", main_keyboard)
+
+    elif text == "❓ مساعدة":
+        send_message(chat_id, "اضغط ابدأ الاختبار و جاوب. كل اجابة صحيحة = نقطة", main_keyboard)
+
+    else: # هنا يشيك اذا راهو يجاوب
+        current_q = user_state[chat_id]
+        if current_q is not None: # معناها راهو في اختبار
+            correct_answer = questions[current_q]["a"]
+            if text.strip() == correct_answer:
+                user_scores[chat_id] += 1
+                send_message(chat_id, "✅ صحيح! +1 نقطة", main_keyboard)
+            else:
+                send_message(chat_id, f"❌ خطأ. الاجابة الصحيحة: {correct_answer}", main_keyboard)
+
+            # نروحو للسؤال الجاي
+            next_q = current_q + 1
+            if next_q < len(questions):
+                user_state[chat_id] = next_q
+                send_message(chat_id, f"السؤال {next_q+1}: {questions[next_q]['q']}", main_keyboard)
+            else:
+                user_state[chat_id] = None
+                send_message(chat_id, f"كملت الاختبار! نقاطك: {user_scores[chat_id]}", main_keyboard)
         else:
             send_message(chat_id, "اختار من الازرار تحت 👇", main_keyboard)
 
