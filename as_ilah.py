@@ -87,34 +87,47 @@ def webhook():
             user_scores[chat_id] = score # حفظ النقطة النهائية
 
     # --- منطق الاجابة ---
-    elif isinstance(user_state[chat_id], dict) and user_state[chat_id]["mode"] == "quiz":
+    # --- منطق الاجابة ---
+    elif isinstance(user_state.get(chat_id), dict) and user_state[chat_id].get("mode") == "quiz":
 
-        if text == "❌ تخطي السؤال":
-            q_id = user_state[chat_id].get("current_q")
-            if q_id:
-                q = get_question_by_id(q_id)
-                send_message(chat_id, f"تم التخطي. الاجابة: {q['correct_answer']}", quiz_keyboard)
-            send_next_question(chat_id)
-            return
-
-        # تصحيح الاجابة
         q_id = user_state[chat_id].get("current_q")
+        if not q_id:
+            send_message(chat_id, "استنى شوية... نجيبلك سؤال جديد", main_keyboard)
+            send_next_question(chat_id)
+            return "ok", 200
+
+        # 1. حالة التخطي
+        if text == "❌ تخطي السؤال":
+            q = get_question_by_id(q_id)
+            if q:
+                mark_correct(q_id, False) # نعتبرو تخطي = خطأ
+                send_message(chat_id, f"تم التخطي. الاجابة: {q['correct_answer']}", quiz_keyboard)
+            user_state[chat_id]["current_q"] = None # نفرغو باش مايعاودوش
+            send_next_question(chat_id) # نبعثو الجديد
+            return "ok", 200
+
+        # 2. حالة الايقاف
+        if text == "⛔ ايقاف الاختبار":
+            stop_quiz(chat_id)
+            return "ok", 200
+
+        # 3. حالة الاجابة العادية
         q = get_question_by_id(q_id)
+        if not q:
+            send_next_question(chat_id)
+            return "ok", 200
+            
         is_correct = (text == q["correct_answer"])
         mark_correct(q_id, is_correct)
+        user_state[chat_id]["current_q"] = None # نفرغو بعد ما نجاوب
 
         if is_correct:
             user_state[chat_id]["score"] += 1
-            send_message(chat_id, f"✅ صحيح! +1", quiz_keyboard)
+            send_message(chat_id, f"✅ صحيح! +1 نقطة", quiz_keyboard)
         else:
             send_message(chat_id, f"❌ خطأ. الاجابة: {q['correct_answer']}", quiz_keyboard)
 
-        send_next_question(chat_id)
-
-    else:
-        send_message(chat_id, "اختار من الازرار 👇", main_keyboard)
-
-    return "ok", 200
+        send_next_question(chat_id) # نبعثو اللي بعدو
 
 def send_next_question(chat_id):
     q = get_random_question()
@@ -122,9 +135,12 @@ def send_next_question(chat_id):
         stop_quiz(chat_id)
         return
 
-    mark_as_asked(q["id"])
-    user_state[chat_id]["current_q"] = q["id"]
-    kb = make_options_keyboard([q["option_a"], q["option_b"], q["option_c"], q["option_d"]])
+    mark_as_asked(q["id"]) # 1. علمو بلي تسأل لول
+    user_state[chat_id]["current_q"] = q["id"] # 2. خزنو ضرك
+    
+    options = [q["option_a"], q["option_b"], q["option_c"], q["option_d"]]
+    random.shuffle(options) # نخلطوهم
+    kb = make_options_keyboard(options)
     send_message(chat_id, f"السؤال: {q['question']}", kb)
 
 def get_question_by_id(q_id):
