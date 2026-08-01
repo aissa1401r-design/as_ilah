@@ -1,113 +1,119 @@
-from flask import Flask, request
 import os
-import requests
 import random
-from supabase import create_client
+import requests
+from flask import Flask, request
+from supabase import create_client, Client
 
 app = Flask(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# 1. حط التوكن والرابط تاعك
+BOT_TOKEN = "حط_التوكن_تاعك_هنا"
+SUPABASE_URL = "حط_الرابط_تاعك_هنا"
+SUPABASE_KEY = "حط_key_تاعك_هنا"
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-QUESTIONS = [
-    {"q": "ما هي عاصمة الجزائر؟", "a": "الجزائر"},
-    {"q": "كم عدد ايام الاسبوع؟", "a": "7"},
-    {"q": "ما لون السماء؟", "a": "ازرق"},
-]
+# 2. الدالة الجديدة باش نجيبو سؤال من قاعدة البيانات
+def get_random_question():
+    res = supabase.table("questions").select("*").execute()
+    if res.data:
+        return random.choice(res.data)
+    return None
+
+# 3. الدالة الجديدة باش نبعثو السؤال بالازرار
+def send_question(chat_id, question):
+    if not question: return
+
+    # نجمعو ال4 اختيارات ونخلطوهم
+    options = [question['option_a'], question['option_b'], question['option_c'], question['option_d']]
+    random.shuffle(options)
+
+    keyboard = {
+        "keyboard": [[opt] for opt in options] + [["سؤال جديد", "/profile", "/top"]],
+        "resize_keyboard": True
+    }
+
+    # نخزنو الجواب الصحيح
+    supabase.table("users").update({"last_answer": question["correct_answer"]}).eq("chat_id", chat_id).execute()
+
+    send_message(chat_id, f"❓ السؤال: {question['question']}", keyboard)
 
 def send_message(chat_id, text, keyboard=None):
-    data = {"chat_id": chat_id, "text": text}
-    if keyboard:
-        data["reply_markup"] = keyboard
-    requests.post(f"{API_URL}/sendMessage", json=data)
+    payload = {"chat_id": chat_id, "text": text}
+    if keyboard: payload["reply_markup"] = keyboard
+    requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
 
 def get_user(chat_id):
     res = supabase.table("users").select("*").eq("chat_id", chat_id).execute()
-    if res.data:
-        return res.data[0]
-    else:
-        new_user = {"chat_id": chat_id, "points": 0, "level": 1}
-        supabase.table("users").insert(new_user).execute()
-        return new_user
+    return res.data[0] if res.data else None
 
-def get_level(points):
-    return (points // 50) + 1
+def create_user(chat_id):
+    new_user = {"chat_id": chat_id, "points": 0, "level": 1}
+    supabase.table("users").insert(new_user).execute()
 
-def points_to_next_level(points):
-    current_level_points = (get_level(points) - 1) * 50
-    return 50 - (points - current_level_points)
-
-def get_top_players():
-    res = supabase.table("users").select("chat_id, points, level").order("points", desc=True).limit(10).execute()
-    return res.data
-
-@app.route("/", methods=["POST"]) # <-- التغيير المهم هنا
+@app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    print("DATA:", data)
-
-    if data and "message" in data:
+    if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
 
         user = get_user(chat_id)
-        current_level = get_level(user['points'])
+        if not user:
+            create_user(chat_id)
+            user = get_user(chat_id)
+            question = get_random_question()
+            send_question(chat_id, question)
+            return "ok"
 
-        if text == "/top":
-            top_players = get_top_players()
-            msg = "🏆 افضل 10 لاعبين 🏆\n\n"
-            for i, player in enumerate(top_players, 1):
-                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                lvl = player.get('level', get_level(player['points']))
-                msg += f"{medal} المستوى {lvl} | {player['points']} نقطة\n"
-            send_message(chat_id, msg)
-
-        elif text == "/profile":
-            remaining = points_to_next_level(user['points'])
-            send_message(chat_id, f"👤 الملف الشخصي\nالمستوى: {current_level} 🏆\nالنقاط: {user['points']} ⭐️\nباقيلك: {remaining} نقطة للمستوى {current_level + 1}")
-
-        elif text == "/start":
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
-            keyboard = {"keyboard": [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
-            send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['q']}", keyboard)
+        if text == "/start":
+            question = get_random_question()
+            send_question(chat_id, question)
 
         elif text == "سؤال جديد":
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['q']}")
+            question = get_random_question()
+            send_question(chat_id, question)
 
-        else:
-            correct_answer = user.get("last_answer", "").strip().lower()
-            user_answer = text.strip().lower()
+        elif text == "/profile":
+            points = user['points']
+            level = user['level']
+            next_level_points = level * 60
+            remaining = next_level_points - points
+            msg = f"📊 ملفك الشخصي\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining} نقطة للمستوى {level+1}"
+            send_message(chat_id, msg)
 
-            if user_answer == correct_answer and correct_answer!= "":
-                new_points = user["points"] + 10
-                new_level = get_level(new_points)
-                old_level = current_level
+        elif text == "/top":
+            res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
+            msg = "🏆 افضل 10 لاعبين:\n"
+            for i, u in enumerate(res.data, 1):
+                msg += f"{i}. نقاط: {u['points']} - مستوى: {u['level']}\n"
+            send_message(chat_id, msg)
 
-                update_data = {"points": new_points, "last_answer": None}
-                level_msg = ""
-                if new_level > old_level:
-                    update_data["level"] = new_level
-                    level_msg = f"\n🎉 مبروك وصلت للمستوى {new_level}!"
+        else: # هنا يشيك الاجابة
+            correct_answer = user['last_answer']
+            if text == correct_answer:
+                new_points = user['points'] + 10
+                new_level = user['level']
+                if new_points >= new_level * 60:
+                    new_level += 1
+                    send_message(chat_id, f"🎉 مبروك! طلعت للمستوى {new_level}")
 
-                supabase.table("users").update(update_data).eq("chat_id", chat_id).execute()
-                send_message(chat_id, f"صحيح! +10 نقاط{level_msg} 🎉\nالمستوى: {new_level} | نقاطك: {new_points}")
+                supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
+                send_message(chat_id, f"✅ صحيح! +10 نقاط\nالمجموع: {new_points}")
+
+                question = get_random_question() # سؤال جديد اوتوماتيك
+                send_question(chat_id, question)
             else:
-                supabase.table("users").update({"last_answer": None}).eq("chat_id", chat_id).execute()
-                send_message(chat_id, f"غلط 😅\nالجواب الصحيح: {correct_answer}\nالمستوى: {current_level} | نقاطك: {user['points']}")
+                send_message(chat_id, f"❌ خطأ! الجواب الصحيح هو: {correct_answer}")
+                question = get_random_question()
+                send_question(chat_id, question)
 
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['q']}")
-
-    return "ok", 200
+    return "ok"
 
 @app.route("/")
 def home():
     return "OK", 200
+
+if name == "__main__":
+    app.run(host="0.0.0.0", port=5000)
