@@ -4,7 +4,7 @@ import requests
 import random
 from supabase import create_client
 
-app = Flask(__name__) # <-- كان عندك Flask(name) غالط
+app = Flask(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -30,12 +30,12 @@ def get_user(chat_id):
     if res.data:
         return res.data[0]
     else:
-        new_user = {"chat_id": chat_id, "points": 0, "level": 1} # زدت level
+        new_user = {"chat_id": chat_id, "points": 0, "level": 1}
         supabase.table("users").insert(new_user).execute()
         return new_user
 
 def get_level(points):
-    return (points // 50) + 1 # <-- كانت تحت الroute غالطة
+    return (points // 50) + 1
 
 def points_to_next_level(points):
     current_level_points = (get_level(points) - 1) * 50
@@ -45,11 +45,8 @@ def get_top_players():
     res = supabase.table("users").select("chat_id, points, level").order("points", desc=True).limit(10).execute()
     return res.data
 
-def update_points(chat_id, points):
-    supabase.table("users").update({"points": points}).eq("chat_id", chat_id).execute()
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"]) # <-- هذا كان ناقص
-def webhook(): # <-- كان عندك def get_level هنا غالط
+@app.route("/", methods=["POST"]) # <-- التغيير المهم هنا
+def webhook():
     data = request.get_json()
     print("DATA:", data)
 
@@ -65,7 +62,7 @@ def webhook(): # <-- كان عندك def get_level هنا غالط
             msg = "🏆 افضل 10 لاعبين 🏆\n\n"
             for i, player in enumerate(top_players, 1):
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                lvl = player.get('level', get_level(player['points'])) # احتياط
+                lvl = player.get('level', get_level(player['points']))
                 msg += f"{medal} المستوى {lvl} | {player['points']} نقطة\n"
             send_message(chat_id, msg)
 
@@ -75,9 +72,7 @@ def webhook(): # <-- كان عندك def get_level هنا غالط
 
         elif text == "/start":
             question = random.choice(QUESTIONS)
-            # <-- المشكل هنا: كنت داير "answer" والصح "a"
             supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
-
             keyboard = {"keyboard": [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
             send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['q']}", keyboard)
 
@@ -100,6 +95,7 @@ def webhook(): # <-- كان عندك def get_level هنا غالط
                 if new_level > old_level:
                     update_data["level"] = new_level
                     level_msg = f"\n🎉 مبروك وصلت للمستوى {new_level}!"
+
                 supabase.table("users").update(update_data).eq("chat_id", chat_id).execute()
                 send_message(chat_id, f"صحيح! +10 نقاط{level_msg} 🎉\nالمستوى: {new_level} | نقاطك: {new_points}")
             else:
