@@ -121,6 +121,56 @@ def webhook():
             send_message(chat_id, f"السؤال: {question['question']}")
 
     return "ok", 200
+
+        # امر البروفايل
+        if text == "/profile":
+            remaining = points_to_next_level(user['points'])
+            send_message(chat_id, f"👤 الملف الشخصي\nالمستوى: {current_level} 🏆\nالنقاط: {user['points']} ⭐\nباقيلك: {remaining} نقطة للمستوى {current_level + 1}")
+            return "ok", 200
+        
+        if text == "/start":
+            question = random.choice(QUESTIONS)
+            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
+            
+            keyboard = {
+                "keyboard": [["سؤال جديد", "/profile", "/top"]],  # زدت الازرار
+                "resize_keyboard": True
+            }
+            send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['question']}", keyboard)
+        
+        elif text == "سؤال جديد":
+            question = random.choice(QUESTIONS)
+            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
+            send_message(chat_id, f"السؤال: {question['question']}")
+        
+        else: # هذا جواب المستخدم
+            correct_answer = user.get("last_answer", "").strip().lower()
+            user_answer = text.strip().lower()
+            
+            if user_answer == correct_answer and correct_answer != "":
+                new_points = user["points"] + 10
+                new_level = get_level(new_points)
+                old_level = current_level
+
+                update_data = {"points": new_points, "last_answer": None}
+
+                level_msg = ""
+                if new_level > old_level:
+                    update_data["level"] = new_level
+                    level_msg = f"\n🎉 مبروك وصلت للمستوى {new_level}!"
+
+                supabase.table("users").update(update_data).eq("chat_id", chat_id).execute()
+                send_message(chat_id, f"صحيح! +10 نقاط{level_msg} 🎉\nالمستوى: {new_level} | نقاطك: {new_points}")
+            else:
+                supabase.table("users").update({"last_answer": None}).eq("chat_id", chat_id).execute()
+                send_message(chat_id, f"غلط 😅\nالجواب الصحيح: {correct_answer}\nالمستوى: {current_level} | نقاطك: {user['points']}")
+
+            # سؤال جديد تلقائي
+            question = random.choice(QUESTIONS)
+            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
+            send_message(chat_id, f"السؤال: {question['question']}")
+
+    return "ok", 200
 @app.route("/")
 def home():
     return "OK", 200
