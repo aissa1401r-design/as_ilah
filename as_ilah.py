@@ -4,7 +4,7 @@ import requests
 import random
 from supabase import create_client
 
-app = Flask(__name__)
+app = Flask(__name__) # <-- كان عندك Flask(name) غالط
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -13,7 +13,6 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# قائمة اسئلة مؤقتة. من بعد نحطوها في Supabase
 QUESTIONS = [
     {"q": "ما هي عاصمة الجزائر؟", "a": "الجزائر"},
     {"q": "كم عدد ايام الاسبوع؟", "a": "7"},
@@ -31,17 +30,12 @@ def get_user(chat_id):
     if res.data:
         return res.data[0]
     else:
-        # مستخدم جديد
-        new_user = {"chat_id": chat_id, "points": 0}
+        new_user = {"chat_id": chat_id, "points": 0, "level": 1} # زدت level
         supabase.table("users").insert(new_user).execute()
         return new_user
 
-def update_points(chat_id, points):
-    supabase.table("users").update({"points": points}).eq("chat_id", chat_id).execute()
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def get_level(points):
-    return (points // 50) + 1
+    return (points // 50) + 1 # <-- كانت تحت الroute غالطة
 
 def points_to_next_level(points):
     current_level_points = (get_level(points) - 1) * 50
@@ -51,126 +45,73 @@ def get_top_players():
     res = supabase.table("users").select("chat_id, points, level").order("points", desc=True).limit(10).execute()
     return res.data
 
-def webhook():
+def update_points(chat_id, points):
+    supabase.table("users").update({"points": points}).eq("chat_id", chat_id).execute()
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"]) # <-- هذا كان ناقص
+def webhook(): # <-- كان عندك def get_level هنا غالط
     data = request.get_json()
     print("DATA:", data)
-    
+
     if data and "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
-        
+
         user = get_user(chat_id)
         current_level = get_level(user['points'])
-        
-        # امر الترتيب
+
         if text == "/top":
             top_players = get_top_players()
             msg = "🏆 افضل 10 لاعبين 🏆\n\n"
             for i, player in enumerate(top_players, 1):
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-                msg += f"{medal} المستوى {player['level']} | {player['points']} نقطة\n"
+                lvl = player.get('level', get_level(player['points'])) # احتياط
+                msg += f"{medal} المستوى {lvl} | {player['points']} نقطة\n"
             send_message(chat_id, msg)
-            return "ok", 200
 
-        # امر البروفايل
-        if text == "/profile":
+        elif text == "/profile":
             remaining = points_to_next_level(user['points'])
-            send_message(chat_id, f"👤 الملف الشخصي\nالمستوى: {current_level} 🏆\nالنقاط: {user['points']} ⭐\nباقيلك: {remaining} نقطة للمستوى {current_level + 1}")
-            return "ok", 200
-        
-        if text == "/start":
+            send_message(chat_id, f"👤 الملف الشخصي\nالمستوى: {current_level} 🏆\nالنقاط: {user['points']} ⭐️\nباقيلك: {remaining} نقطة للمستوى {current_level + 1}")
+
+        elif text == "/start":
             question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            
-            keyboard = {
-                "keyboard": [["سؤال جديد", "/profile", "/top"]],  # زدت الازرار
-                "resize_keyboard": True
-            }
-            send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['question']}", keyboard)
-        
+            # <-- المشكل هنا: كنت داير "answer" والصح "a"
+            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
+
+            keyboard = {"keyboard": [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
+            send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['q']}", keyboard)
+
         elif text == "سؤال جديد":
             question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['question']}")
-        
-        else: # هذا جواب المستخدم
+            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
+            send_message(chat_id, f"السؤال: {question['q']}")
+
+        else:
             correct_answer = user.get("last_answer", "").strip().lower()
             user_answer = text.strip().lower()
-            
-            if user_answer == correct_answer and correct_answer != "":
+
+            if user_answer == correct_answer and correct_answer!= "":
                 new_points = user["points"] + 10
                 new_level = get_level(new_points)
                 old_level = current_level
 
                 update_data = {"points": new_points, "last_answer": None}
-
                 level_msg = ""
                 if new_level > old_level:
                     update_data["level"] = new_level
                     level_msg = f"\n🎉 مبروك وصلت للمستوى {new_level}!"
-
                 supabase.table("users").update(update_data).eq("chat_id", chat_id).execute()
                 send_message(chat_id, f"صحيح! +10 نقاط{level_msg} 🎉\nالمستوى: {new_level} | نقاطك: {new_points}")
             else:
                 supabase.table("users").update({"last_answer": None}).eq("chat_id", chat_id).execute()
                 send_message(chat_id, f"غلط 😅\nالجواب الصحيح: {correct_answer}\nالمستوى: {current_level} | نقاطك: {user['points']}")
 
-            # سؤال جديد تلقائي
             question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['question']}")
+            supabase.table("users").update({"last_answer": question["a"]}).eq("chat_id", chat_id).execute()
+            send_message(chat_id, f"السؤال: {question['q']}")
 
     return "ok", 200
 
-        # امر البروفايل
-        if text == "/profile":
-            remaining = points_to_next_level(user['points'])
-            send_message(chat_id, f"👤 الملف الشخصي\nالمستوى: {current_level} 🏆\nالنقاط: {user['points']} ⭐\nباقيلك: {remaining} نقطة للمستوى {current_level + 1}")
-            return "ok", 200
-        
-        if text == "/start":
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            
-            keyboard = {
-                "keyboard": [["سؤال جديد", "/profile", "/top"]],  # زدت الازرار
-                "resize_keyboard": True
-            }
-            send_message(chat_id, f"مرحبا! ✅\nالمستوى: {current_level} | نقاطك: {user['points']}\n\nالسؤال: {question['question']}", keyboard)
-        
-        elif text == "سؤال جديد":
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['question']}")
-        
-        else: # هذا جواب المستخدم
-            correct_answer = user.get("last_answer", "").strip().lower()
-            user_answer = text.strip().lower()
-            
-            if user_answer == correct_answer and correct_answer != "":
-                new_points = user["points"] + 10
-                new_level = get_level(new_points)
-                old_level = current_level
-
-                update_data = {"points": new_points, "last_answer": None}
-
-                level_msg = ""
-                if new_level > old_level:
-                    update_data["level"] = new_level
-                    level_msg = f"\n🎉 مبروك وصلت للمستوى {new_level}!"
-
-                supabase.table("users").update(update_data).eq("chat_id", chat_id).execute()
-                send_message(chat_id, f"صحيح! +10 نقاط{level_msg} 🎉\nالمستوى: {new_level} | نقاطك: {new_points}")
-            else:
-                supabase.table("users").update({"last_answer": None}).eq("chat_id", chat_id).execute()
-                send_message(chat_id, f"غلط 😅\nالجواب الصحيح: {correct_answer}\nالمستوى: {current_level} | نقاطك: {user['points']}")
-
-            # سؤال جديد تلقائي
-            question = random.choice(QUESTIONS)
-            supabase.table("users").update({"last_answer": question["answer"]}).eq("chat_id", chat_id).execute()
-            send_message(chat_id, f"السؤال: {question['question']}")
-
-    return "ok", 200
 @app.route("/")
 def home():
     return "OK", 200
