@@ -6,7 +6,6 @@ from supabase import create_client, Client
 
 app = Flask(__name__)
 
-# نرجعو نقراو من Render كما كنا
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -14,7 +13,6 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ======= الزيادة الجديدة برك =======
 def get_random_question():
     res = supabase.table("questions").select("*").execute()
     return random.choice(res.data) if res.data else None
@@ -25,7 +23,6 @@ def send_question(chat_id, question):
     keyboard = {"keyboard": [[opt] for opt in options] + [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
     supabase.table("users").update({"last_answer": question["correct_answer"]}).eq("chat_id", chat_id).execute()
     send_message(chat_id, f"❓ {question['question']}", keyboard)
-# =====================================
 
 def send_message(chat_id, text, keyboard=None):
     payload = {"chat_id": chat_id, "text": text}
@@ -50,17 +47,19 @@ def webhook():
         if not user:
             create_user(chat_id)
             user = get_user(chat_id)
-            q = get_random_question() # التغيير 1
-            send_question(chat_id, q) # التغيير 2
+            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙\nاضغط على الازرار باش تبدا") # الزيادة 1
+            q = get_random_question()
+            send_question(chat_id, q)
             return "ok"
 
         if text == "/start":
-            q = get_random_question() # التغيير 3
-            send_question(chat_id, q) # التغيير 4
+            send_message(chat_id, "اهلا بيك من جديد 🌙") # الزيادة 2
+            q = get_random_question()
+            send_question(chat_id, q)
 
         elif text == "سؤال جديد":
-            q = get_random_question() # التغيير 5
-            send_question(chat_id, q) # التغيير 6
+            q = get_random_question()
+            send_question(chat_id, q)
 
         elif text == "/profile":
             points = user['points']; level = user['level']
@@ -78,10 +77,10 @@ def webhook():
                 if new_points >= new_level * 60: new_level += 1; send_message(chat_id, f"🎉 مستوى {new_level}")
                 supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
                 send_message(chat_id, f"✅ صحيح! +10\nالمجموع: {new_points}")
-                q = get_random_question(); send_question(chat_id, q) # التغيير 7
+                q = get_random_question(); send_question(chat_id, q)
             else:
                 send_message(chat_id, f"❌ خطأ! الصح: {user['last_answer']}")
-                q = get_random_question(); send_question(chat_id, q) # التغيير 8
+                q = get_random_question(); send_question(chat_id, q)
 
     return "ok"
 
