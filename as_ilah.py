@@ -55,7 +55,10 @@ def webhook():
         if text == "/start":
             send_message(chat_id, "اهلا بيك من جديد 🌙") # ترحيب
             q = get_random_question()
-            send_question(chat_id, q) # رجعنا نبعثو السؤال والازرار
+            if q:
+                send_question(chat_id, q) # رجعنا نبعثو السؤال والازرار
+            else:
+                send_message(chat_id,'خطأ: ما لقيتش اسئلة في قاعدة البيانات ')
 
         elif text == "سؤال جديد":
             q = get_random_question()
