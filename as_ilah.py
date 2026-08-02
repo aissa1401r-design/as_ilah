@@ -47,15 +47,15 @@ def webhook():
         if not user:
             create_user(chat_id)
             user = get_user(chat_id)
-            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙\nاضغط على الازرار باش تبدا") # الزيادة 1
+            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙") # ترحيب اول مرة
             q = get_random_question()
             send_question(chat_id, q)
             return "ok"
 
         if text == "/start":
-            send_message(chat_id, "اهلا بيك من جديد 🌙") # الزيادة 2
+            send_message(chat_id, "اهلا بيك من جديد 🌙") # ترحيب
             q = get_random_question()
-            send_question(chat_id, q)
+            send_question(chat_id, q) # رجعنا نبعثو السؤال والازرار
 
         elif text == "سؤال جديد":
             q = get_random_question()
