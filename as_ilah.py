@@ -13,9 +13,24 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_random_question():
+def get_random_question(chat_id): # زدنا chat_id
     res = supabase.table("questions").select("*").execute()
-    return random.choice(res.data) if res.data else None
+    if not res.data: return None
+    
+    user = get_user(chat_id)
+    last_q = user.get("last_question") if user else None # جيب اخر سؤال
+    
+    # اختار سؤال جديد مختلف
+    available_questions = [q for q in res.data if q['question'] != last_q]
+    if not available_questions: # اذا كملو الاسئلة
+        available_questions = res.data
+    
+    new_q = random.choice(available_questions)
+    
+    # خزن السؤال الجديد
+    supabase.table("users").update({"last_question": new_q["question"]}).eq("chat_id", chat_id).execute()
+    
+    return new_q
 
 def send_question(chat_id, question):
     options = [question['option_a'], question['option_b'], question['option_c'], question['option_d']]
@@ -48,20 +63,20 @@ def webhook():
             create_user(chat_id)
             user = get_user(chat_id)
             send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙") # ترحيب اول مرة
-            q = get_random_question()
+            q = get_random_question(chat_id)
             send_question(chat_id, q)
             return "ok"
 
         if text == "/start":
             send_message(chat_id, "اهلا بيك من جديد 🌙") # ترحيب
-            q = get_random_question()
+            q = get_random_question(chat_id)
             if q:
                 send_question(chat_id, q) # رجعنا نبعثو السؤال والازرار
             else:
                 send_message(chat_id,'خطأ: ما لقيتش اسئلة في قاعدة البيانات ')
 
         elif text == "سؤال جديد":
-            q = get_random_question()
+            q = get_random_question(chat_id)
             send_question(chat_id, q)
 
         elif text == "/profile":
