@@ -62,7 +62,9 @@ def send_question(chat_id):
     random.shuffle(options)
 
     # ازرار inline مربوطة بالاجابة
-    keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"answer_{opt}"}] for opt in options]}
+    keyboard = {"inline_keyboard": [
+        [{"text": options[0],"callback_data": f"answer_{options[0]}"},{"text":options[1], "callback_data":f"answer_{options[1]}"}],
+                [{"text":options[2],"callback_data": f"answer_{options[2]}"},{"text": options[3], "callback_data": f"answer_{options[3]}"}]
 
     # نحفظو الاجابة الصحيحة في جدول users
     supabase.table("users").update({"last_answer": question["correct_answer"], "last_question_id": question["id"]}).eq("chat_id", chat_id).execute()
@@ -75,7 +77,7 @@ def webhook():
     # 1. اذا ضغط على زر
     if "callback_query" in data:
         callback = data["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
+$$        chat_id = callback["message"]["chat"]["id"]
         message_id = callback["message"]["message_id"]
         text = callback["data"]
         user = get_user(chat_id)
