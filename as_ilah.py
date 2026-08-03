@@ -65,7 +65,7 @@ def send_question(chat_id):
     keyboard = {"inline_keyboard": [
         [{"text": options[0],"callback_data": f"answer_{options[0]}"},{"text":options[1], "callback_data":f"answer_{options[1]}"}],
                 [{"text":options[2],"callback_data": f"answer_{options[2]}"},{"text": options[3], "callback_data": f"answer_{options[3]}"}]
-            ]
+            ]}
 
     # نحفظو الاجابة الصحيحة في جدول users
     supabase.table("users").update({"last_answer": question["correct_answer"], "last_question_id": question["id"]}).eq("chat_id", chat_id).execute()
