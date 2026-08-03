@@ -87,7 +87,7 @@ def webhook():
     # 1. اذا ضغط على زر
     if "callback_query" in data:
         callback = data["callback_query"]
-$$        chat_id = callback["message"]["chat"]["id"]
+        chat_id = callback["message"]["chat"]["id"]
         message_id = callback["message"]["message_id"]
         text = callback["data"]
         user = get_user(chat_id)
