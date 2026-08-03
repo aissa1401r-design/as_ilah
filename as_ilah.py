@@ -15,9 +15,17 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def send_message(chat_id, text, keyboard=None):
-    payload = {"chat_id": chat_id, "text": text}
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if keyboard: payload["reply_markup"] = keyboard
     requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
+
+def edit_message(chat_id, message_id, text, keyboard=None):
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "HTML"}
+    if keyboard: payload["reply_markup"] = keyboard
+    requests.post(f"{TELEGRAM_API_URL}/editMessageText", json=payload)
+
+def answer_callback(callback_id):
+    requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={"callback_query_id": callback_id})
 
 def get_user(chat_id):
     res = supabase.table("users").select("*").eq("chat_id", chat_id).execute()
@@ -27,38 +35,69 @@ def create_user(chat_id):
     supabase.table("users").insert({"chat_id": chat_id, "points": 0, "level": 1}).execute()
 
 def get_random_question(chat_id):
-    # 1. نجيبو id الاسئلة اللي جازو على المستخدم
     res = supabase.table("user_questions").select("question_id").eq("chat_id", chat_id).execute()
     asked_ids = [item['question_id'] for item in res.data]
 
-    # 2. نجيبو سؤال جديد
     query = supabase.table("questions").select("*")
     if asked_ids:
         query = query.not_.in_("id", asked_ids)
     res = query.execute()
 
-    # 3. اذا كملو الاسئلة نعاودو من الصفر
-    if not res.data:
-        send_message(chat_id, "🔄 كملت كل الاسئلة! نبداو دورة جديدة")
+    if not res.data: # اذا كمل
         supabase.table("user_questions").delete().eq("chat_id", chat_id).execute()
         res = supabase.table("questions").select("*").execute()
+        if not res.data: return None
 
     new_q = random.choice(res.data)
-
-    # 4. نسجلو بلي السؤال هذا "جاز"
     supabase.table("user_questions").insert({"chat_id": chat_id, "question_id": new_q["id"]}).execute()
     return new_q
 
-def send_question(chat_id, question):
+def send_question(chat_id):
+    question = get_random_question(chat_id)
+    if not question:
+        send_message(chat_id, "🔄 ما كاين حتى سؤال في قاعدة البيانات")
+        return
+
     options = [question['option_a'], question['option_b'], question['option_c'], question['option_d']]
     random.shuffle(options)
-    keyboard = {"keyboard": [[opt] for opt in options] + [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
-    supabase.table("users").update({"last_answer": question["correct_answer"]}).eq("chat_id", chat_id).execute()
-    send_message(chat_id, f"❓ {question['question']}", keyboard)
+
+    # ازرار inline مربوطة بالاجابة
+    keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"answer_{opt}"}] for opt in options]}
+
+    # نحفظو الاجابة الصحيحة في جدول users
+    supabase.table("users").update({"last_answer": question["correct_answer"], "last_question_id": question["id"]}).eq("chat_id", chat_id).execute()
+    send_message(chat_id, f"❓ <b>{question['question']}</b>", keyboard)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
+
+    # 1. اذا ضغط على زر
+    if "callback_query" in data:
+        callback = data["callback_query"]
+        chat_id = callback["message"]["chat"]["id"]
+        message_id = callback["message"]["message_id"]
+        text = callback["data"]
+        user = get_user(chat_id)
+        answer_callback(callback["id"])
+
+        if text.startswith("answer_"):
+            user_answer = text.replace("answer_", "")
+            correct = user.get('last_answer', "")
+
+            if user_answer == correct:
+                new_points = user['points'] + 10; new_level = user['level']
+                if new_points >= new_level * 60:
+                    new_level += 1
+                    edit_message(chat_id, message_id, f"🎉 مبروك! طلعت للمستوى {new_level}")
+                supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
+                edit_message(chat_id, message_id, f"✅ صحيح! +10 نقاط\nالمجموع: {new_points}")
+            else:
+                edit_message(chat_id, message_id, f"❌ خطأ! الصحيح هو: <b>{correct}</b>")
+
+            send_question(chat_id) # نبعثو السؤال الجاي ديركت
+        return "ok"
+    # 2. اذا بعث رسالة
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
@@ -68,42 +107,27 @@ def webhook():
             create_user(chat_id)
             user = get_user(chat_id)
             send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙")
-            q = get_random_question(chat_id)
-            if q: send_question(chat_id, q)
+            send_question(chat_id)
             return "ok"
 
         if text == "/start":
-            send_message(chat_id, "اهلا بيك من جديد 🌙")
-            q = get_random_question(chat_id)
-            if q: send_question(chat_id, q)
+            keyboard = {"keyboard": [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
+            send_message(chat_id, "اهلا بيك من جديد 🌙", keyboard)
+            send_question(chat_id)
             return "ok"
 
         elif text == "سؤال جديد":
-            q = get_random_question(chat_id)
-            if q: send_question(chat_id, q)
+            send_question(chat_id)
 
         elif text == "/profile":
             points = user['points']; level = user['level']
             remaining = (level * 60) - points
-            send_message(chat_id, f"📊 ملفك\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining}")
+            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining} للمستوى الجاي")
 
         elif text == "/top":
             res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
-            msg = "🏆 افضل 10:\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
+            msg = "🏆 <b>افضل 10:</b>\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
             send_message(chat_id, msg)
-
-        else: # الاجابة
-            correct = user.get('last_answer', "")
-            if text == correct:
-                new_points = user['points'] + 10; new_level = user['level']
-                if new_points >= new_level * 60: new_level += 1; send_message(chat_id, f"🎉 مستوى {new_level}")
-                supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
-                send_message(chat_id, f"✅ صحيح! +10\nالمجموع: {new_points}")
-            else:
-                send_message(chat_id, f"❌ خطأ! الصح: {correct}")
-
-            q = get_random_question(chat_id)
-            if q: send_question(chat_id, q)
 
     return "ok"
 
