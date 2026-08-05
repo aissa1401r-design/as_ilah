@@ -1,4 +1,3 @@
-
 import os
 import requests
 import json
@@ -88,7 +87,7 @@ def send_categories(chat_id):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
-    
+
     if "callback_query" in data:
         callback = data["callback_query"]
         chat_id = callback["message"]["chat"]["id"]
