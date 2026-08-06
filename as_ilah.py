@@ -13,11 +13,13 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def send_message(chat_id, text, keyboard=None):
+def send_message(chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-    if keyboard: payload["reply_markup"] = keyboard
-    r = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-    return r.json().get("result", {}).get("message_id") # نرجعو message_id
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+        print("Sending keyboard:", reply_markup) # اضافة للتجريب
+    r = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+    print("Telegram response:", r.text) # نشوفو واش قال تلغرام
 
 def edit_buttons(chat_id, message_id): # دالة جديدة تحي الازرار
     payload = {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}}
