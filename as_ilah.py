@@ -83,9 +83,19 @@ def send_question(chat_id):
 
 def send_categories(chat_id):
     categories = get_categories()
-    keyboard = {"inline_keyboard": [[{"text": cat["name"], "callback_data": f"cat_{cat['id']}"}] for cat in categories]}
-    send_message(chat_id, "📚 <b>اختار القسم اللي تحب تراجع فيه:</b>", keyboard)
+    print("Categories from DB:", categories) # للتجريب
+    
+    if not categories:
+        send_message(chat_id, "⚠️ مزال ما زدتش حتى قسم في الداتاباز. روح زيد في Supabase")
+        return
 
+    keyboard = {"inline_keyboard": []}
+    for cat in categories:
+        keyboard["inline_keyboard"].append([
+            {"text": f"📖 {cat['name']}", "callback_data": f"cat_{cat['id']}"}
+        ])
+    
+    send_message(chat_id, "📚 <b>اختار القسم اللي تحب تراجع فيه:</b>", keyboard)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
