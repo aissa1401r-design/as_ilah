@@ -18,7 +18,7 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup:
         payload["reply_markup"] = reply_markup
         print("Sending keyboard:", reply_markup) # اضافة للتجريب
-    r = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+    r = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
     print("Telegram response:", r.text) # نشوفو واش قال تلغرام
 
 def edit_buttons(chat_id, message_id): # دالة جديدة تحي الازرار
