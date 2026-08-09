@@ -1,6 +1,5 @@
 import os
 import requests
-import json
 from flask import Flask, request
 from supabase import create_client, Client
 
@@ -17,11 +16,13 @@ def send_message(chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if reply_markup:
         payload["reply_markup"] = reply_markup
-        print("Sending keyboard:", reply_markup) # اضافة للتجريب
     r = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload)
-    print("Telegram response:", r.text) # نشوفو واش قال تلغرام
+    data = r.json()
+    if data.get("ok"):
+        return data["result"]["message_id"]
+    return None
 
-def edit_buttons(chat_id, message_id): # دالة جديدة تحي الازرار
+def edit_buttons(chat_id, message_id):
     payload = {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}}
     requests.post(f"{TELEGRAM_API_URL}/editMessageReplyMarkup", json=payload)
 
@@ -37,10 +38,14 @@ def create_user(chat_id):
 
 def reset_user(chat_id):
     supabase.table("user_questions").delete().eq("chat_id", chat_id).execute()
-    supabase.table("users").update({"points": 0, "level": 1}).eq("chat_id", chat_id).execute()
+    supabase.table("users").update({"points": 0, "level": 1, "current_category": None}).eq("chat_id", chat_id).execute()
 
-def get_categories(): # نجيبو الاقسام
+def get_categories():
     res = supabase.table("categories").select("*").execute()
+    return res.data
+
+def get_question_by_id(q_id):
+    res = supabase.table("questions").select("*").eq("id", q_id).single().execute()
     return res.data
 
 def get_next_question(chat_id, category_id):
@@ -60,12 +65,12 @@ def send_question(chat_id):
     user = get_user(chat_id)
     category_id = user.get("current_category")
     if not category_id:
-        send_categories(chat_id) # اذا ماخيرش قسم
+        send_categories(chat_id)
         return
 
     question = get_next_question(chat_id, category_id)
 
-    if not question: # كمل القسم
+    if not question:
         user = get_user(chat_id)
         msg = f"🎉 <b>كملت قسم كامل!</b>\n\n📊 نتيجتك: {user['points']} نقطة - المستوى {user['level']}"
         keyboard = {"inline_keyboard": [[{"text": "🔄 اعادة نفس القسم", "callback_data": "confirm_reset"}],
@@ -76,64 +81,78 @@ def send_question(chat_id):
     options = [question['option_a'], question['option_b'], question['option_c'], question['option_d']]
     keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"answer_{question['id']}_{opt}"}] for opt in options]}
 
-    msg_id = send_message(chat_id, f"❓ <b>{question['question']}</b>", keyboard)
-    if msg_id:
-        supabase.table("user_questions").insert({"chat_id": chat_id, "question_id": question["id"]}).execute()
-        supabase.table("users").update({"last_answer": question["correct_answer"], "last_question_id": question["id"], "last_message_id": msg_id}).eq("chat_id", chat_id).execute()
+    send_message(chat_id, f"❓ <b>{question['question']}</b>", keyboard)
+    supabase.table("user_questions").insert({"chat_id": chat_id, "question_id": question["id"]}).execute()
 
 def send_categories(chat_id):
     categories = get_categories()
-    print("Categories from DB:", categories) # للتجريب
-    
     if not categories:
         send_message(chat_id, "⚠️ مزال ما زدتش حتى قسم في الداتاباز. روح زيد في Supabase")
         return
 
     keyboard = {"inline_keyboard": []}
     for cat in categories:
-        keyboard["inline_keyboard"].append([
-            {"text": f"📖 {cat['name']}", "callback_data": f"cat_{cat['id']}"}
-        ])
-    
+        keyboard["inline_keyboard"].append([{"text": f"📖 {cat['name']}", "callback_data": f"cat_{cat['id']}"}])
+
     send_message(chat_id, "📚 <b>اختار القسم اللي تحب تراجع فيه:</b>", keyboard)
-@app.route('/webhook', methods=['POST'])
+
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
-    data = request.get_json()
+    update = request.get_json()
 
-    if "callback_query" in data:
-        callback = data["callback_query"]
-        chat_id = callback["message"]["chat"]["id"]
-        message_id = callback["message"]["message_id"]
-        text = callback["data"]
+    if "message" in update:
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"].get("text", "")
         user = get_user(chat_id)
-        answer_callback(callback["id"])
 
-        if text.startswith("cat_"): # اختيار القسم
-            cat_id = int(text.split("_")[1])
-            supabase.table("users").update({"current_category": cat_id}).eq("chat_id", chat_id).execute()
-            reset_user(chat_id) # نصفر قبل ما نبدا القسم الجديد
-            send_message(chat_id, "✅ تم اختيار القسم. نبداو 👇")
-            send_question(chat_id)
-            return "ok"
+        if not user:
+            create_user(chat_id)
+            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙")
 
-        if text == "choose_category":
+        if text == "/start":
+            reset_user(chat_id)
             send_categories(chat_id)
             return "ok"
 
-        if text == "confirm_reset":
-            reset_user(chat_id)
-            send_message(chat_id, "✅ تمت اعادة القسم\nنبداو من جديد 👇")
+        elif text == "سؤال جديد":
             send_question(chat_id)
-            return "ok"
 
-        if text.startswith("answer_"):
-            edit_buttons(chat_id, message_id) # نحيو الازرار من السؤال هذا
+        elif text == "/profile":
+            user = get_user(chat_id)
+            points = user['points']; level = user['level']
+            remaining = (level * 60) - points
+            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining}")
 
-            parts = text.split("_", 2)
+        elif text == "/top":
+            res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
+            msg = "🏆 <b>افضل 10:</b>\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
+            send_message(chat_id, msg)
+
+    elif "callback_query" in update:
+        chat_id = update["callback_query"]["message"]["chat"]["id"]
+        message_id = update["callback_query"]["message"]["message_id"]
+        data = update["callback_query"]["data"]
+        answer_callback(update["callback_query"]["id"])
+        user = get_user(chat_id)
+
+        if data.startswith("cat_"):
+            cat_id = int(data.split("_")[1])
+            supabase.table("users").update({"current_category": cat_id}).eq("chat_id", chat_id).execute()
+            reset_user(chat_id)
+            send_message(chat_id, "✅ تم اختيار القسم. نبداو 👇")
+            send_question(chat_id)
+
+        elif data.startswith("answer_"):
+            edit_buttons(chat_id, message_id)
+            parts = data.split("_", 2)
+            question_id = int(parts[1])
             user_answer = parts[2]
-            correct = user.get('last_answer', "")
 
-            if user_answer == correct:
+            question = get_question_by_id(question_id)
+            if not question: return "ok", 200
+            correct = question['correct_answer']
+
+            if user_answer.strip() == correct.strip():
                 new_points = user['points'] + 10; new_level = user['level']
                 msg = f"✅ صحيح! +10 نقاط\nالمجموع: {new_points}"
                 if new_points >= new_level * 60:
@@ -145,38 +164,19 @@ def webhook():
                 send_message(chat_id, f"❌ خطأ! الصحيح هو: <b>{correct}</b>")
 
             send_question(chat_id)
-        return "ok"
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-        user = get_user(chat_id)
-
-        if not user:
-            create_user(chat_id)
-            user = get_user(chat_id)
-            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙")
-
-        if text == "/start":
-            keyboard = {"keyboard": [["سؤال جديد", "/profile", "/top"]], "resize_keyboard": True}
-            send_message(chat_id, "اهلا بيك من جديد 🌙", keyboard)
-            send_categories(chat_id) # نبداو باختيار القسم
-            return "ok"
-
-        elif text == "سؤال جديد":
+        elif data == "choose_category":
+            send_categories(chat_id)
+        elif data == "confirm_reset":
+            reset_user(chat_id)
+            send_message(chat_id, "✅ تمت اعادة القسم\nنبداو من جديد 👇")
             send_question(chat_id)
 
-        elif text == "/profile":
-            points = user['points']; level = user['level']
-            remaining = (level * 60) - points
-            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining}")
-
-        elif text == "/top":
-            res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
-            msg = "🏆 <b>افضل 10:</b>\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
-            send_message(chat_id, msg)
-
-    return "ok"
+    return "ok", 200
 
 @app.route("/")
-def home(): return "OK", 200
+def home():
+    return "Bot is running!", 200
+
+if name == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
