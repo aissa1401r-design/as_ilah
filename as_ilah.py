@@ -3,7 +3,7 @@ import requests
 from flask import Flask, request
 from supabase import create_client, Client
 
-app = Flask(name)
+app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -181,5 +181,5 @@ def webhook():
 def home():
     return "Bot is running!", 200
 
-if name == 'main':
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
