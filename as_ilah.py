@@ -3,7 +3,7 @@ import requests
 from flask import Flask, request
 from supabase import create_client, Client
 
-app = Flask(__name__)
+app = Flask(name)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -107,6 +107,7 @@ def webhook():
 
         if not user:
             create_user(chat_id)
+            user = get_user(chat_id) # تعديل مهم باش مايطيحش
             send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙")
 
         if text == "/start":
@@ -121,7 +122,7 @@ def webhook():
             user = get_user(chat_id)
             points = user['points']; level = user['level']
             remaining = (level * 60) - points
-            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining}")
+            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining} نقطة للمستوى الجاي")
 
         elif text == "/top":
             res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
@@ -151,17 +152,19 @@ def webhook():
             question = get_question_by_id(question_id)
             if not question: return "ok", 200
             correct = question['correct_answer']
+            explanation = question.get('explanation', 'مافيهش شرح لهذا السؤال')
 
             if user_answer.strip() == correct.strip():
                 new_points = user['points'] + 10; new_level = user['level']
-                msg = f"✅ صحيح! +10 نقاط\nالمجموع: {new_points}"
+                msg = f"✅ <b>صحيح!</b> +10 نقاط\nالمجموع: {new_points}\n\n💡 <b>الشرح:</b> {explanation}"
                 if new_points >= new_level * 60:
                     new_level += 1
-                    msg = f"🎉 مبروك! طلعت للمستوى {new_level}\n" + msg
+                    msg = f"🎉 <b>مبروك! طلعت للمستوى {new_level}</b>\n\n" + msg
                 supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
                 send_message(chat_id, msg)
             else:
-                send_message(chat_id, f"❌ خطأ! الصحيح هو: <b>{correct}</b>")
+                msg = f"❌ <b>خطأ!</b>\nالصحيح هو: <b>{correct}</b>\n\n💡 <b>الشرح:</b> {explanation}"
+                send_message(chat_id, msg)
 
             send_question(chat_id)
 
@@ -178,5 +181,5 @@ def webhook():
 def home():
     return "Bot is running!", 200
 
-if __name__ == '__main__':
+if name == 'main':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
