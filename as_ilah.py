@@ -1,9 +1,9 @@
 import os
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from supabase import create_client, Client
 
-app = Flask(__name__)
+app = Flask(_name_) # 1. صلحتها هنا
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -24,7 +24,7 @@ def send_message(chat_id, text, reply_markup=None):
 
 def edit_buttons(chat_id, message_id):
     payload = {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}}
-    requests.post(f"{TELEGRAM_API_URL}/editMessageReplyMarkup", json=payload)
+    requests.post(f"{TELEMAIL_API_URL}/editMessageReplyMarkup", json=payload)
 
 def answer_callback(callback_id):
     requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={"callback_query_id": callback_id})
@@ -99,7 +99,8 @@ def send_categories(chat_id):
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     update = request.get_json()
-
+    print("Update received:", update) # باش تشوف في Logs
+    
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
         text = update["message"].get("text", "")
@@ -107,79 +108,14 @@ def webhook():
 
         if not user:
             create_user(chat_id)
-            user = get_user(chat_id) # تعديل مهم باش مايطيحش
-            send_message(chat_id, "مرحبا بيك في بوت الاسئلة الدينية 🌙")
+            send_message(chat_id, "مرحبا بيك! 👋")
 
         if text == "/start":
-            reset_user(chat_id)
             send_categories(chat_id)
-            return "ok"
 
-        elif text == "سؤال جديد":
-            send_question(chat_id)
+    # 2. لازم ترجع رد لتلغرام
+    return jsonify({"ok": True})
 
-        elif text == "/profile":
-            user = get_user(chat_id)
-            points = user['points']; level = user['level']
-            remaining = (level * 60) - points
-            send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining} نقطة للمستوى الجاي")
-
-        elif text == "/top":
-            res = supabase.table("users").select("*").order("points", desc=True).limit(10).execute()
-            msg = "🏆 <b>افضل 10:</b>\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
-            send_message(chat_id, msg)
-
-    elif "callback_query" in update:
-        chat_id = update["callback_query"]["message"]["chat"]["id"]
-        message_id = update["callback_query"]["message"]["message_id"]
-        data = update["callback_query"]["data"]
-        answer_callback(update["callback_query"]["id"])
-        user = get_user(chat_id)
-
-        if data.startswith("cat_"):
-            cat_id = int(data.split("_")[1])
-            supabase.table("users").update({"current_category": cat_id}).eq("chat_id", chat_id).execute()
-            reset_user(chat_id)
-            send_message(chat_id, "✅ تم اختيار القسم. نبداو 👇")
-            send_question(chat_id)
-
-        elif data.startswith("answer_"):
-            edit_buttons(chat_id, message_id)
-            parts = data.split("_", 2)
-            question_id = int(parts[1])
-            user_answer = parts[2]
-
-            question = get_question_by_id(question_id)
-            if not question: return "ok", 200
-            correct = question['correct_answer']
-            explanation = question.get('explanation', 'مافيهش شرح لهذا السؤال')
-
-            if user_answer.strip() == correct.strip():
-                new_points = user['points'] + 10; new_level = user['level']
-                msg = f"✅ <b>صحيح!</b> +10 نقاط\nالمجموع: {new_points}\n\n💡 <b>الشرح:</b> {explanation}"
-                if new_points >= new_level * 60:
-                    new_level += 1
-                    msg = f"🎉 <b>مبروك! طلعت للمستوى {new_level}</b>\n\n" + msg
-                supabase.table("users").update({"points": new_points, "level": new_level}).eq("chat_id", chat_id).execute()
-                send_message(chat_id, msg)
-            else:
-                msg = f"❌ <b>خطأ!</b>\nالصحيح هو: <b>{correct}</b>\n\n💡 <b>الشرح:</b> {explanation}"
-                send_message(chat_id, msg)
-
-            send_question(chat_id)
-
-        elif data == "choose_category":
-            send_categories(chat_id)
-        elif data == "confirm_reset":
-            reset_user(chat_id)
-            send_message(chat_id, "✅ تمت اعادة القسم\nنبداو من جديد 👇")
-            send_question(chat_id)
-
-    return "ok", 200
-
-@app.route("/")
-def home():
-    return "Bot is running!", 200
-
-if __name__ == '__main__':
+# 3. هادي باش يخدم في Render
+if _name_ == '_main_':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
