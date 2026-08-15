@@ -3,7 +3,7 @@ import requests
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 
-app = Flask(name)
+app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
