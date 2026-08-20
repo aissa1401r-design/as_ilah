@@ -60,10 +60,15 @@ def get_next_question(chat_id, category_id):
 def send_question(chat_id):
     user = get_user(chat_id)
     category_id = user.get("current_category")
+    print(f"DEBUG: chat_id= {chat_id}, category_id={category_id}")
+    
     if not category_id:
         send_categories(chat_id)
         return
+        
     question = get_next_question(chat_id, category_id)
+    print(f"question found= {question}")
+    
     if not question:
         user = get_user(chat_id)
         msg = f"🎉 <b>كملت قسم كامل!</b>\n\n📊 نتيجتك: {user['points']} نقطة - المستوى {user['level']}"
