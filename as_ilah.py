@@ -24,7 +24,7 @@ def send_message(chat_id, text, reply_markup=None):
 
 def edit_buttons(chat_id, message_id):
     payload = {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}}
-    requests.post(f"{TELEGRAM_API_URL}/editMessageReplyMarkup", json=payload) # صلحت TELEMAIL
+    requests.post(f"{TELEGRAM_API_URL}/editMessageReplyMarkup", json=payload)
 
 def answer_callback(callback_id):
     requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={"callback_query_id": callback_id})
@@ -109,7 +109,8 @@ def webhook():
 
         elif text == "/profile":
             user = get_user(chat_id)
-            points = user['points']; level = user['level']
+            points = user['points']
+            level = user['level']
             remaining = (level * 60) - points
             send_message(chat_id, f"📊 <b>ملفك</b>\nالمستوى: {level}\nالنقاط: {points}\nباقيلك {remaining} نقطة للمستوى الجاي")
 
@@ -118,7 +119,7 @@ def webhook():
             msg = "🏆 <b>افضل 10:</b>\n" + "\n".join([f"{i}. {u['points']} نقطة" for i,u in enumerate(res.data,1)])
             send_message(chat_id, msg)
 
-    elif "callback_query" in update:
+    elif "callback_query" in update: # هذا السطر كان فيه المشكل
         chat_id = update["callback_query"]["message"]["chat"]["id"]
         message_id = update["callback_query"]["message"]["message_id"]
         data = update["callback_query"]["data"]
@@ -138,12 +139,14 @@ def webhook():
             question_id = int(parts[1])
             user_answer = parts[2]
             question = get_question_by_id(question_id)
-            if not question: return jsonify({"ok": True})
+            if not question: 
+                return jsonify({"ok": True})
             correct = question['correct_answer']
             explanation = question.get('explanation', 'مافيهش شرح لهذا السؤال')
 
             if user_answer.strip() == correct.strip():
-                new_points = user['points'] + 10; new_level = user['level']
+                new_points = user['points'] + 10
+                new_level = user['level']
                 msg = f"✅ <b>صحيح!</b> +10 نقاط\nالمجموع: {new_points}\n\n💡 <b>الشرح:</b> {explanation}"
                 if new_points >= new_level * 60:
                     new_level += 1
@@ -162,11 +165,11 @@ def webhook():
             send_message(chat_id, "✅ تمت اعادة القسم\nنبداو من جديد 👇")
             send_question(chat_id)
 
-    return jsonify({"ok": True}) # لازم هكا
+    return jsonify({"ok": True})
 
 @app.route("/")
 def home():
     return "Bot is running!", 200
 
-if __name__ == '__main__': # صلحتها هنا
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
