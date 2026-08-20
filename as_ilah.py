@@ -135,11 +135,11 @@ def webhook():
         user = get_user(chat_id)
 
         if data.startswith("cat_"):
-            cat_id = int(data.split("_")[1])
-            supabase.table("users").update({"current_category": cat_id}).eq("chat_id", chat_id).execute()
-            reset_user(chat_id)
-            send_message(chat_id, "✅ تم اختيار القسم. نبداو 👇")
-            send_question(chat_id)
+    cat_id = int(data.split("_")[1])
+    supabase.table("users").update({"current_category": cat_id}).eq("chat_id", chat_id).execute()
+    reset_user(chat_id, keep_category=True) # زيد keep_category=True
+    send_message(chat_id, "✅ تم اختيار القسم. نبداو 👇")
+    send_question(chat_id)
 
         elif data.startswith("answer_"):
             edit_buttons(chat_id, message_id)
