@@ -86,7 +86,7 @@ def send_categories(chat_id):
         keyboard["inline_keyboard"].append([{"text": f"📖 {cat['name']}", "callback_data": f"cat_{cat['id']}"}])
     send_message(chat_id, "📚 <b>اختار القسم اللي تحب تراجع فيه:</b>", keyboard)
 
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+@app.route(f'/bot{BOT_TOKEN}', methods=['POST'])
 def webhook():
     update = request.get_json()
     print("Update received:", update)
