@@ -36,9 +36,12 @@ def get_user(chat_id):
 def create_user(chat_id):
     supabase.table("users").insert({"chat_id": chat_id, "points": 0, "level": 1, "current_category": None}).execute()
 
-def reset_user(chat_id):
+def reset_user(chat_id, keep_category=False):
     supabase.table("user_questions").delete().eq("chat_id", chat_id).execute()
-    supabase.table("users").update({"points": 0, "level": 1, "current_category": None}).eq("chat_id", chat_id).execute()
+    if keep_category:
+        supabase.table("users").update({"points": 0, "level": 1}).eq("chat_id", chat_id).execute()
+    else:
+        supabase.table("users").update({"points": 0, "level": 1, "current_category": None}).eq("chat_id", chat_id).execute()
 
 def get_categories():
     res = supabase.table("categories").select("*").execute()
